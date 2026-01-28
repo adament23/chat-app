@@ -54,7 +54,7 @@ export async function getOrCreateChat(req: AuthRequest, res: Response, next: Nex
             participants: { $all: [userId, participantId], $size: 2 }
         })
         .populate('participants', 'name email avatar')
-        .populate('latestMessage');
+        .populate('lastMessage');
         if(!chat) {
             // Create new chat
             const newChat = new Chat({
