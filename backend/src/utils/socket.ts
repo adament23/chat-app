@@ -8,10 +8,6 @@ import { User } from "../models/User";
 import { resolve } from "dns";
 
 
-interface SocketWithUserId extends Socket {
-    userId: string;
-}
-
 //store online users in memory: userId -> socketId
 export const onlineUsers: Map<string, string>= new Map();
 
@@ -19,11 +15,11 @@ export const initializeSocket = (httpServer: HttpServer) => {
     const allowedOrigions= [
         "http://localhost:8081",// Expo moblie app
          "http://localhost:5173" ,// Vite web dev
-         process.env.FRONTEND_URL as string , // Production web app
+         process.env.FRONTEND_URL ,  // Production web app
+    ].filter(Boolean) as string[]
 
 
-
-    ]
+    
 
     const io = new SocketServer(httpServer, {cors: {origin: allowedOrigions }});
 
@@ -40,7 +36,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
             const user = await User.findOne({clerkId});
             if(!user) return next (new Error("User not found"));
 
-            (socket as SocketWithUserId).userId = user._id.toString();
+            socket.data.userId = user._id.toString();
             next();
         } catch (error : any) {
             next(new Error(error));
@@ -51,7 +47,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
     //this "connection" event name is special and should be written like this
     //it's the event that is triggered when a new client connects to the server
     io.on("connection", (socket) => {
-          const userId = (socket as SocketWithUserId).userId;
+          const userId = socket.data.userId;
           
           //send list of currently online users to the newly connected client
           socket.emit("online-users", {userIds: Array.from(onlineUsers.keys())});
@@ -93,7 +89,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
                 chat.lastMessageAt = new Date();
                 await chat.save();
 
-                await message.populate('sender', 'name email avatar');
+                await message.populate('sender', 'name avatar');
 
                 //emit to chat room (for users inside te chat)
                 io.to(`chat-${chatId}`).emit('new-message', message);
