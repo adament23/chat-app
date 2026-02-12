@@ -1,63 +1,50 @@
-import axios from 'axios'
-import { useAuth } from '@clerk/clerk-expo'
-import { useEffect } from 'react'
-import * as Sentry from '@sentry/react-native';
+import axios from "axios";
+import * as Sentry from "@sentry/react-native";
+import { useAuth } from "@clerk/clerk-expo";
+import { useCallback } from "react";
 
+const API_URL = "https://chat-app-41m24.sevalla.app/api";
 
-const API_URL = "https://chat-app-41m24.sevalla.app/api"
+// this is the same thing we did with useEffect setup but it's optimized version - it's better!!
 
 const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-        "Content-Type": "application/json"
-    },
-})
+  baseURL: API_URL,
+  headers: { "Content-Type": "application/json" },
+});
 
-export const useApi =  () => {
-    const { getToken } = useAuth()
-
-    useEffect(()=> {
-        const requestInterceptor = api.interceptors.request.use(async(config) => {
-            const token = await getToken();
-
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`
-            }
-            return config
-        })
-
-        const responseInterceptor = api.interceptors.response.use((response) => response, (error) =>{
-            // log api errors to sentry
-            if(error.response) {
-                Sentry.logger.error(
-                    Sentry.logger
-                    .fmt`API request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
-                    {
-                        status: error.response.status,
-                        endpoint: error.config?.url,
-                        method: error.config?.method,
-                        
-                    }
-                )
-            }else if (error.request) {
-                Sentry.logger.warn("API request made but no response received", {
-                    endpoint: error.config?.url,
-                    method: error.config?.method
-            })
-        }
-        
-        return Promise.reject(error)    
+// Response interceptor registered once
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      Sentry.logger.error(
+        Sentry.logger
+          .fmt`API request failed: ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
+        { status: error.response.status, endpoint: error.config?.url, method: error.config?.method }
+      );
+    } else if (error.request) {
+      Sentry.logger.warn("API request failed - no response", {
+        endpoint: error.config?.url,
+        method: error.config?.method,
+      });
     }
-)
+    return Promise.reject(error);
+  }
+);
 
-        //cleanup: remove the interceptor when the component unmounts
-        return () => {
-            api.interceptors.request.eject(requestInterceptor)
-            api.interceptors.response.eject(responseInterceptor)        
-        }
-        }, [getToken])
+export const useApi = () => {
+  const { getToken } = useAuth();
 
-    return api;
-    
-}
+  const apiWithAuth = useCallback(
+    async <T>(config: Parameters<typeof api.request>[0]) => {
+      const token = await getToken();
+      return api.request<T>({
+        ...config,
+        headers: { ...config.headers, ...(token && { Authorization: `Bearer ${token}` }) },
+      });
+    },
+    [getToken]
+  );
 
+  return { api, apiWithAuth };
+};
